@@ -109,16 +109,20 @@ progressContainer.onclick = (e) => {
 // Visualization & Update Loop
 function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
-    const displayWidth = Math.floor(canvas.clientWidth * dpr);
-    const displayHeight = Math.floor(canvas.clientHeight * dpr);
+    // Use getBoundingClientRect for more accurate dimensions in iframes
+    const rect = canvas.getBoundingClientRect();
+    const displayWidth = Math.floor(rect.width * dpr);
+    const displayHeight = Math.floor(rect.height * dpr);
 
-    // Only update if dimensions are valid and have actually changed
-    // This prevents "zero size" errors during initial layout or hidden states
-    if (displayWidth > 0 && displayHeight > 0) {
-        if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-            canvas.width = displayWidth;
-            canvas.height = displayHeight;
-        }
+    // To prevent "GL_INVALID_FRAMEBUFFER_OPERATION: Attachment has zero size",
+    // we ensure the internal canvas dimensions are never 0 if the element is present.
+    // We use a minimum of 1x1.
+    const finalWidth = Math.max(1, displayWidth);
+    const finalHeight = Math.max(1, displayHeight);
+
+    if (canvas.width !== finalWidth || canvas.height !== finalHeight) {
+        canvas.width = finalWidth;
+        canvas.height = finalHeight;
     }
 }
 
@@ -133,9 +137,26 @@ if (canvas) {
     resizeCanvas();
 }
 
-function drawWave() {
-    // Skip drawing if canvas has no size to avoid GL/Context errors
-    if (!canvas || canvas.width <= 0 || canvas.height <= 0) return;
+function draw() {
+    requestAnimationFrame(draw);
+
+    // Skip drawing if canvas is not visible or too small to avoid GL/Context errors
+    // offsetParent check ensures the element is actually part of the layout
+    if (!canvas.offsetParent || canvas.width <= 1 || canvas.height <= 1) {
+        return;
+    }
+    
+    // Update Progress UI
+    if (engine.isInitialized) {
+        const current = engine.currentTime;
+        const duration = engine.duration;
+        const percent = (current / duration) * 100;
+        progressBar.style.width = `${percent || 0}%`;
+        
+        if (current >= duration && duration > 0) {
+            nextBtn.click(); // Auto skip to next
+        }
+    }
 
     // Draw Oscilloscope
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -156,44 +177,31 @@ function drawWave() {
     let x = 0;
 
     ctx.beginPath();
-    ctx.moveTo(0, canvas.height / 2);
     for (let i = 0; i < engine.bufferLength; i++) {
         const v = data[i] / 128.0;
         const y = v * canvas.height / 2;
-        ctx.lineTo(x, y);
+
+        if (i === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+
         x += sliceWidth;
     }
     ctx.lineTo(canvas.width, canvas.height / 2);
 
-    // Bloom/Glow Pass
-    ctx.shadowBlur = 25;
+    // Bloom/Glow Pass - reduced slightly for better compatibility
+    ctx.shadowBlur = 35;
     ctx.shadowColor = '#ccccfa';
-    ctx.strokeStyle = '#ccccfa';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1;
     ctx.stroke();
 
     // Sharp Core Pass
     ctx.shadowBlur = 0;
     ctx.lineWidth = 1;
+    ctx.strokeStyle = '#ccccfa';
     ctx.stroke();
-}
-
-function draw() {
-    requestAnimationFrame(draw);
-    
-    // Update Progress UI
-    if (engine.isInitialized) {
-        const current = engine.currentTime;
-        const duration = engine.duration;
-        const percent = (current / duration) * 100;
-        progressBar.style.width = `${percent || 0}%`;
-        
-        if (current >= duration && duration > 0) {
-            nextBtn.click(); // Auto skip to next
-        }
-    }
-
-    drawWave();
 }
 
 // Initialize
