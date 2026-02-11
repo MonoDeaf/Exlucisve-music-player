@@ -133,26 +133,9 @@ if (canvas) {
     resizeCanvas();
 }
 
-function draw() {
+function drawWave() {
     // Skip drawing if canvas has no size to avoid GL/Context errors
-    if (canvas.width === 0 || canvas.height === 0) {
-        requestAnimationFrame(draw);
-        return;
-    }
-
-    requestAnimationFrame(draw);
-    
-    // Update Progress UI
-    if (engine.isInitialized) {
-        const current = engine.currentTime;
-        const duration = engine.duration;
-        const percent = (current / duration) * 100;
-        progressBar.style.width = `${percent || 0}%`;
-        
-        if (current >= duration && duration > 0) {
-            nextBtn.click(); // Auto skip to next
-        }
-    }
+    if (!canvas || canvas.width <= 0 || canvas.height <= 0) return;
 
     // Draw Oscilloscope
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -173,31 +156,44 @@ function draw() {
     let x = 0;
 
     ctx.beginPath();
+    ctx.moveTo(0, canvas.height / 2);
     for (let i = 0; i < engine.bufferLength; i++) {
         const v = data[i] / 128.0;
         const y = v * canvas.height / 2;
-
-        if (i === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
-        }
-
+        ctx.lineTo(x, y);
         x += sliceWidth;
     }
     ctx.lineTo(canvas.width, canvas.height / 2);
 
     // Bloom/Glow Pass
-    ctx.shadowBlur = 32;
+    ctx.shadowBlur = 25;
     ctx.shadowColor = '#ccccfa';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#ccccfa';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
     // Sharp Core Pass
     ctx.shadowBlur = 0;
     ctx.lineWidth = 1;
-    ctx.strokeStyle = '#ccccfa';
     ctx.stroke();
+}
+
+function draw() {
+    requestAnimationFrame(draw);
+    
+    // Update Progress UI
+    if (engine.isInitialized) {
+        const current = engine.currentTime;
+        const duration = engine.duration;
+        const percent = (current / duration) * 100;
+        progressBar.style.width = `${percent || 0}%`;
+        
+        if (current >= duration && duration > 0) {
+            nextBtn.click(); // Auto skip to next
+        }
+    }
+
+    drawWave();
 }
 
 // Initialize

@@ -27,7 +27,7 @@ export class AudioEngine {
 
         // Retry logic for CORS/Loading failures
         if (this.audioElement.crossOrigin === "anonymous" && this.retryCount === 0) {
-            console.log("Audio Engine: CORS load failed. Retrying without CORS (Visualizer will be disabled).");
+            console.warn("Audio Engine: CORS load failed. This often happens if the media server doesn't support the Origin header. Retrying without CORS (Visualizer will be disabled). Source:", this.currentUrl);
             this.retryCount++;
             this.audioElement.removeAttribute('crossOrigin');
             this.audioElement.src = this.currentUrl;
