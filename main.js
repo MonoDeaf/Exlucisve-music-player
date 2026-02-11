@@ -108,14 +108,38 @@ progressContainer.onclick = (e) => {
 
 // Visualization & Update Loop
 function resizeCanvas() {
-    canvas.width = canvas.clientWidth * window.devicePixelRatio;
-    canvas.height = canvas.clientHeight * window.devicePixelRatio;
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth = Math.floor(canvas.clientWidth * dpr);
+    const displayHeight = Math.floor(canvas.clientHeight * dpr);
+
+    // Only update if dimensions are valid and have actually changed
+    // This prevents "zero size" errors during initial layout or hidden states
+    if (displayWidth > 0 && displayHeight > 0) {
+        if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+            canvas.width = displayWidth;
+            canvas.height = displayHeight;
+        }
+    }
 }
 
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
+// Use ResizeObserver for more reliable sizing in embedded/iframe contexts
+const resizeObserver = new ResizeObserver(() => {
+    resizeCanvas();
+});
+
+if (canvas) {
+    resizeObserver.observe(canvas);
+    // Initial call
+    resizeCanvas();
+}
 
 function draw() {
+    // Skip drawing if canvas has no size to avoid GL/Context errors
+    if (canvas.width === 0 || canvas.height === 0) {
+        requestAnimationFrame(draw);
+        return;
+    }
+
     requestAnimationFrame(draw);
     
     // Update Progress UI
