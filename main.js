@@ -4,6 +4,10 @@ import { AudioEngine } from 'audio-engine';
 const engine = new AudioEngine();
 let currentTrackIndex = 0;
 
+// Visualizer settings
+// Exposed as window variable for runtime adjustment
+window.visualizerTimebase = 5500;
+
 // DOM Elements
 const canvas = document.getElementById('oscilloscope');
 const ctx = canvas.getContext('2d');
@@ -21,28 +25,35 @@ const currentTitle = document.getElementById('current-title');
 function initPlaylist() {
     trackListEl.innerHTML = '';
     playlist.forEach((track, index) => {
-        const li = document.createElement('li');
-        li.className = `track-item ${index === currentTrackIndex ? 'active' : ''}`;
-        li.innerHTML = `
-            <div class="track-meta">
+        const card = document.createElement('div');
+        card.className = `track-item ${index === currentTrackIndex ? 'active' : ''}`;
+        card.innerHTML = `
+            <div class="track-card-content">
+                <div class="track-index">${(index + 1).toString().padStart(2, '0')}</div>
                 <div class="track-name">${track.title}</div>
             </div>
         `;
-        li.onclick = () => selectTrack(index);
-        trackListEl.appendChild(li);
+        card.onclick = () => selectTrack(index);
+        trackListEl.appendChild(card);
     });
 }
 
-function selectTrack(index) {
-    if (!engine.isInitialized) engine.init();
+async function selectTrack(index) {
+    if (!engine.isInitialized) await engine.init();
     
     currentTrackIndex = index;
     const track = playlist[index];
     
     // Update UI
-    document.querySelectorAll('.track-item').forEach((el, i) => {
+    const items = document.querySelectorAll('.track-item');
+    items.forEach((el, i) => {
         el.classList.toggle('active', i === index);
     });
+
+    // Scroll active item into view
+    if (items[index]) {
+        items[index].scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
     
     currentTitle.textContent = track.title;
     
@@ -72,9 +83,9 @@ function updatePlayPauseUI() {
 }
 
 // Controls
-playBtn.onclick = () => {
+playBtn.onclick = async () => {
     if (!engine.isInitialized) {
-        engine.init();
+        await engine.init();
         selectTrack(currentTrackIndex);
         return;
     }
@@ -161,46 +172,49 @@ function draw() {
     // Draw Oscilloscope
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    const data = engine.getOscilloscopeData();
-    if (!data) {
+    const waveData = engine.getOscilloscopeData();
+    if (!waveData) {
         // Draw flat line if no engine
         ctx.beginPath();
         ctx.moveTo(0, canvas.height / 2);
         ctx.lineTo(canvas.width, canvas.height / 2);
         ctx.strokeStyle = '#222';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 2;
         ctx.stroke();
         return;
     }
 
-    const sliceWidth = canvas.width * 1.0 / engine.bufferLength;
-    let x = 0;
+    const { buffer, index, size } = waveData;
+    const samplesToDraw = Math.min(window.visualizerTimebase, size);
+    
+    // Optimization: Draw roughly 2 points per horizontal pixel
+    const step = Math.max(1, Math.floor(samplesToDraw / (canvas.width * 2)));
+    const pointsCount = Math.floor(samplesToDraw / step);
+    const sliceWidth = canvas.width / pointsCount;
+    
+    // Determine start point in circular buffer
+    const startIdx = (index - samplesToDraw + size) % size;
 
     ctx.beginPath();
-    for (let i = 0; i < engine.bufferLength; i++) {
-        const v = data[i] / 128.0;
-        const y = v * canvas.height / 2;
+    const midY = canvas.height / 2;
+    const scaleY = canvas.height / 2;
 
-        if (i === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
-        }
+    ctx.beginPath();
+    for (let i = 0; i < pointsCount; i++) {
+        const readIdx = (startIdx + (i * step)) % size;
+        const v = buffer[readIdx]; // Raw Float32 -1.0 to 1.0
+        
+        // Invert Y because canvas coordinates go down
+        const y = midY - (v * scaleY); 
+        const x = i * sliceWidth;
 
-        x += sliceWidth;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
     }
-    ctx.lineTo(canvas.width, canvas.height / 2);
 
-    // Bloom/Glow Pass - reduced slightly for better compatibility
-    ctx.shadowBlur = 35;
-    ctx.shadowColor = '#ccccfa';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Sharp Core Pass
-    ctx.shadowBlur = 0;
-    ctx.lineWidth = 1;
+    // Performance optimization: No shadow blur
     ctx.strokeStyle = '#ccccfa';
+    ctx.lineWidth = 2.0;
     ctx.stroke();
 }
 

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Mono Music Player</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-mono/style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/geist@1.3.0/dist/fonts/geist-sans/style.css">
     <script type="importmap">
     {
       "imports": {
@@ -25,23 +25,25 @@
         </div>
         
         <div id="controls">
-            <button id="prev-btn" class="ctrl-btn" title="Previous Track">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6h2v12H6zm3.5 6L18 18V6z" fill="currentColor"/></svg>
-            </button>
-            <button id="play-btn" class="ctrl-btn" title="Play/Pause">
-                <svg id="play-icon" viewBox="0 0 24 24" width="24" height="24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
-                <svg id="pause-icon" viewBox="0 0 24 24" width="24" height="24" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="currentColor"/></svg>
-            </button>
-            <button id="next-btn" class="ctrl-btn" title="Next Track">
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="currentColor"/></svg>
-            </button>
             <div id="progress-container">
                 <div id="progress-bar"></div>
+            </div>
+            <div id="btn-group">
+                <button id="prev-btn" class="ctrl-btn" title="Previous Track">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 6h2v12H6zm3.5 6L18 18V6z" fill="currentColor"/></svg>
+                </button>
+                <button id="play-btn" class="ctrl-btn primary" title="Play/Pause">
+                    <svg id="play-icon" viewBox="0 0 24 24" width="24" height="24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+                    <svg id="pause-icon" viewBox="0 0 24 24" width="24" height="24" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="currentColor"/></svg>
+                </button>
+                <button id="next-btn" class="ctrl-btn" title="Next Track">
+                    <svg viewBox="0 0 24 24" width="20" height="20"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="currentColor"/></svg>
+                </button>
             </div>
         </div>
 
         <div id="track-list-container">
-            <ul id="track-list"></ul>
+            <div id="track-list"></div>
         </div>
     </div>
     <script type="module" src="main.js"></script>

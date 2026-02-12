@@ -12,6 +12,13 @@ export class AudioEngine {
         
         this.dataArray = null;
         this.bufferLength = 0;
+
+        // Large history buffer for long-timebase visualization
+        // 4M samples is approx 95 seconds at 44.1kHz
+        this.historySize = 4194304; 
+        this.historyBuffer = new Float32Array(this.historySize);
+        this.historyIndex = 0;
+        this.workletNode = null;
         
         this.currentUrl = '';
         this.retryCount = 0;
@@ -48,21 +55,88 @@ export class AudioEngine {
         if (this.onError) this.onError(e);
     }
 
-    init() {
+    async init() {
         if (this.isInitialized) return;
         
-        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioCtor = window.AudioContext || window.webkitAudioContext;
+        // Request 44.1kHz explicitly, though browser/hardware may override
+        this.audioContext = new AudioCtor({
+            latencyHint: 'interactive',
+            sampleRate: 44100
+        });
+
         this.analyser = this.audioContext.createAnalyser();
         this.gainNode = this.audioContext.createGain();
         
-        this.source = this.audioContext.createMediaElementSource(this.audioElement);
+        // Only create source once
+        if (!this.source) {
+            this.source = this.audioContext.createMediaElementSource(this.audioElement);
+        }
+        
+        // AudioWorklet for high-performance non-blocking visualization
+        const workletCode = `
+            class VisualizerProcessor extends AudioWorkletProcessor {
+                constructor() {
+                    super();
+                    this.bufferSize = 128;
+                    this.buffer = new Float32Array(this.bufferSize);
+                    this.index = 0;
+                }
+                process(inputs, outputs, parameters) {
+                    const input = inputs[0];
+                    if (input && input.length > 0) {
+                        const channel = input[0];
+                        // Copy data to buffer
+                        for (let i = 0; i < channel.length; i++) {
+                            this.buffer[this.index++] = channel[i];
+                            if (this.index >= this.bufferSize) {
+                                this.port.postMessage(this.buffer);
+                                this.index = 0;
+                            }
+                        }
+                    }
+                    return true;
+                }
+            }
+            registerProcessor('visualizer-processor', VisualizerProcessor);
+        `;
+
+        const blob = new Blob([workletCode], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+
+        try {
+            await this.audioContext.audioWorklet.addModule(url);
+            this.workletNode = new AudioWorkletNode(this.audioContext, 'visualizer-processor');
+            
+            this.workletNode.port.onmessage = (e) => {
+                const input = e.data; // Float32Array from worklet
+                const len = input.length;
+                const buffer = this.historyBuffer;
+                const size = this.historySize;
+                let idx = this.historyIndex;
+                
+                for (let i = 0; i < len; i++) {
+                    buffer[idx] = input[i];
+                    idx = (idx + 1) % size;
+                }
+                this.historyIndex = idx;
+            };
+
+            // Connect source to worklet (side-chain for visualization only)
+            // This does NOT affect the audio output path
+            this.source.connect(this.workletNode);
+        } catch (e) {
+            console.warn("AudioWorklet failed, visualization may be disabled:", e);
+        }
+        
+        // Main Audio Path (High Quality Stereo)
+        // Source -> Analyser -> Gain -> Destination
         this.source.connect(this.analyser);
         this.analyser.connect(this.gainNode);
         this.gainNode.connect(this.audioContext.destination);
         
         this.analyser.fftSize = 2048;
-        this.bufferLength = this.analyser.frequencyBinCount;
-        this.dataArray = new Uint8Array(this.bufferLength);
+        this.bufferLength = this.historySize;
         
         this.isInitialized = true;
     }
@@ -102,9 +176,15 @@ export class AudioEngine {
     }
 
     getOscilloscopeData() {
-        if (!this.analyser) return null;
-        this.analyser.getByteTimeDomainData(this.dataArray);
-        return this.dataArray;
+        if (!this.isInitialized) return null;
+        
+        // Return the history buffer and the current write index
+        // so the visualizer knows where "now" is.
+        return {
+            buffer: this.historyBuffer,
+            index: this.historyIndex,
+            size: this.historySize
+        };
     }
 
     get currentTime() {
