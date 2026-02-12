@@ -59,10 +59,10 @@ export class AudioEngine {
         if (this.isInitialized) return;
         
         const AudioCtor = window.AudioContext || window.webkitAudioContext;
-        // Request 44.1kHz explicitly, though browser/hardware may override
+        // Allow browser to choose native sample rate (usually 48kHz on mobile) to prevent resampling artifacts
+        // Use 'playback' latency for larger buffers and smoother audio on mobile
         this.audioContext = new AudioCtor({
-            latencyHint: 'interactive',
-            sampleRate: 44100
+            latencyHint: 'playback'
         });
 
         this.analyser = this.audioContext.createAnalyser();

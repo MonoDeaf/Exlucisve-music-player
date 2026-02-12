@@ -6,7 +6,7 @@ let currentTrackIndex = 0;
 
 // Visualizer settings
 // Exposed as window variable for runtime adjustment
-window.visualizerTimebase = 5500;
+window.visualizerTimebase = 6000;
 
 // DOM Elements
 const canvas = document.getElementById('oscilloscope');

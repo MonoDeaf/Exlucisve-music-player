@@ -56,10 +56,10 @@
 }
 
 #controls {
-    padding: 15px;
+    padding: 20px 15px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    justify-content: center;
 }
 
 #btn-group {
@@ -88,6 +88,8 @@
     color: #030030;
     width: 48px;
     height: 48px;
+  outline: 1px dashed #ccccfa;
+  outline-offset: 5px;
     border: none;
 }
 
@@ -105,13 +107,15 @@
 }
 
 #progress-container {
-    height: 18px;
-    background: #222;
-    border-radius: 2px;
+    height: 12px;
+    background: #111;
+    border-radius: 0;
     position: relative;
     cursor: pointer;
     overflow: hidden;
-    margin-top: 0px;
+    margin: 0;
+    width: 100%;
+    border-bottom: 1px solid #222;
 }
 
 #progress-bar {
