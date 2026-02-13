@@ -78,18 +78,23 @@ export class AudioEngine {
             class VisualizerProcessor extends AudioWorkletProcessor {
                 constructor() {
                     super();
-                    this.bufferSize = 128;
+                    this.bufferSize = 256; // Store stereo pairs
                     this.buffer = new Float32Array(this.bufferSize);
                     this.index = 0;
                 }
                 process(inputs, outputs, parameters) {
                     const input = inputs[0];
                     if (input && input.length > 0) {
-                        const channel = input[0];
-                        // Copy data to buffer
-                        for (let i = 0; i < channel.length; i++) {
-                            this.buffer[this.index++] = channel[i];
+                        const left = input[0];
+                        const right = input[1] || left; // Fallback to mono if needed
+                        const len = left.length;
+                        
+                        for (let i = 0; i < len; i++) {
+                            this.buffer[this.index++] = left[i];
+                            this.buffer[this.index++] = right[i];
+                            
                             if (this.index >= this.bufferSize) {
+                                // Send copy of buffer
                                 this.port.postMessage(this.buffer);
                                 this.index = 0;
                             }
@@ -109,14 +114,13 @@ export class AudioEngine {
             this.workletNode = new AudioWorkletNode(this.audioContext, 'visualizer-processor');
             
             this.workletNode.port.onmessage = (e) => {
-                const input = e.data; // Float32Array from worklet
-                const len = input.length;
+                const data = e.data;
                 const buffer = this.historyBuffer;
                 const size = this.historySize;
                 let idx = this.historyIndex;
                 
-                for (let i = 0; i < len; i++) {
-                    buffer[idx] = input[i];
+                for (let i = 0; i < data.length; i++) {
+                    buffer[idx] = data[i];
                     idx = (idx + 1) % size;
                 }
                 this.historyIndex = idx;

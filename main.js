@@ -185,36 +185,85 @@ function draw() {
     }
 
     const { buffer, index, size } = waveData;
-    const samplesToDraw = Math.min(window.visualizerTimebase, size);
     
-    // Optimization: Draw roughly 2 points per horizontal pixel
-    const step = Math.max(1, Math.floor(samplesToDraw / (canvas.width * 2)));
-    const pointsCount = Math.floor(samplesToDraw / step);
-    const sliceWidth = canvas.width / pointsCount;
-    
-    // Determine start point in circular buffer
-    const startIdx = (index - samplesToDraw + size) % size;
-
-    ctx.beginPath();
+    const midX = canvas.width / 2;
     const midY = canvas.height / 2;
-    const scaleY = canvas.height / 2;
+    const padding = 20;
+    
+    // --- DRAW OSCILLOSCOPE (Left Half) ---
+    const oscWidth = midX;
+    const timebase = window.visualizerTimebase || 6000;
+    const samplesToDraw = Math.min(timebase, size / 2); // size is total floats, interleaved
+    
+    const step = Math.max(1, Math.floor(samplesToDraw / (oscWidth * 1.5)));
+    const pointsCount = Math.floor(samplesToDraw / step);
+    const sliceWidth = oscWidth / pointsCount;
+    
+    // Determine start point in circular buffer (stepping back in pairs)
+    const startIdx = (index - (samplesToDraw * 2) + size) % size;
 
+    ctx.save();
     ctx.beginPath();
+    ctx.strokeStyle = '#ccccfa';
+    ctx.lineWidth = 1.5;
+    
     for (let i = 0; i < pointsCount; i++) {
-        const readIdx = (startIdx + (i * step)) % size;
-        const v = buffer[readIdx]; // Raw Float32 -1.0 to 1.0
+        // Read Left channel (even indices in interleaved buffer)
+        const readIdx = (startIdx + (i * step * 2)) % size;
+        const v = buffer[readIdx];
         
-        // Invert Y because canvas coordinates go down
-        const y = midY - (v * scaleY); 
+        const y = midY - (v * (canvas.height / 2 - 10)); 
         const x = i * sliceWidth;
 
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
     }
+    ctx.stroke();
+    ctx.restore();
 
-    // Performance optimization: No shadow blur
-    ctx.strokeStyle = '#ccccfa';
-    ctx.lineWidth = 2.0;
+    // --- DRAW VECTORSCOPE (Right Half) ---
+    // A goniometer-style plot: X = L-R, Y = -(L+R)
+    const vectorSamples = 1024; // Recent history for trace look
+    const vectorScale = (canvas.height / 2) - padding;
+    const vectorStartIdx = (index - (vectorSamples * 2) + size) % size;
+
+    ctx.save();
+    ctx.translate(midX + midX / 2, midY);
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(204, 204, 250, 1)';
+    ctx.lineWidth = 1.5;
+
+    for (let i = 0; i < vectorSamples; i++) {
+        const rIdx = (vectorStartIdx + (i * 2)) % size;
+        const L = buffer[rIdx];
+        const R = buffer[rIdx + 1];
+
+        // Standard 45-degree rotation goniometer coordinates
+        const vx = (L - R) * 0.707;
+        const vy = -(L + R) * 0.707;
+
+        const px = vx * vectorScale;
+        const py = vy * vectorScale;
+
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    // Draw reference lines for vectorscope
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.setLineDash([8, 8]);
+    ctx.moveTo(-vectorScale, 0); ctx.lineTo(vectorScale, 0);
+    ctx.moveTo(0, -vectorScale); ctx.lineTo(0, vectorScale);
+    ctx.stroke();
+    ctx.restore();
+
+    // Divider line
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0)';
+    ctx.moveTo(midX, 10);
+    ctx.lineTo(midX, canvas.height - 10);
     ctx.stroke();
 }
 
