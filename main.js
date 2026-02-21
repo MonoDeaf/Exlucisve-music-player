@@ -20,6 +20,7 @@ const pauseIcon = document.getElementById('pause-icon');
 const progressContainer = document.getElementById('progress-container');
 const progressBar = document.getElementById('progress-bar');
 const currentTitle = document.getElementById('current-title');
+const timebaseSlider = document.getElementById('timebase-slider');
 
 // Initialize Track List UI
 function initPlaylist() {
@@ -52,7 +53,7 @@ async function selectTrack(index) {
 
     // Scroll active item into view
     if (items[index]) {
-        items[index].scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        items[index].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
     
     currentTitle.textContent = track.title;
@@ -115,6 +116,10 @@ progressContainer.onclick = (e) => {
     const x = e.clientX - rect.left;
     const percent = (x / rect.width) * 100;
     engine.seek(percent);
+};
+
+timebaseSlider.oninput = (e) => {
+    window.visualizerTimebase = parseInt(e.target.value);
 };
 
 // Visualization & Update Loop
@@ -186,51 +191,89 @@ function draw() {
 
     const { buffer, index, size } = waveData;
     
+    // Smooth Index Interpolation: Corrects for the discrete updates from AudioWorklet blocks
+    const now = performance.now();
+    const elapsed = now - (engine.lastUpdateTimestamp || now);
+    const sampleRate = (engine.audioContext && engine.audioContext.sampleRate) || 44100;
+    const additionalSamples = engine.isPlaying ? (elapsed * sampleRate / 1000) : 0;
+    // We target the current "now" with a tiny offset to ensure we don't read past the write pointer
+    const smoothIndex = (index + additionalSamples * 2 - 2) % size;
+
     const midX = canvas.width / 2;
     const midY = canvas.height / 2;
-    const padding = 20;
     
     // --- DRAW OSCILLOSCOPE (Left Half) ---
     const oscWidth = midX;
     const timebase = window.visualizerTimebase || 6000;
-    const samplesToDraw = Math.min(timebase, size / 2); // size is total floats, interleaved
+    const samplesToDraw = Math.min(timebase, size / 2);
     
-    const step = Math.max(1, Math.floor(samplesToDraw / (oscWidth * 1.5)));
-    const pointsCount = Math.floor(samplesToDraw / step);
-    const sliceWidth = oscWidth / pointsCount;
-    
-    // Determine start point in circular buffer (stepping back in pairs)
-    const startIdx = (index - (samplesToDraw * 2) + size) % size;
+    // Calculate the exact starting sample for this frame
+    const startIdxExact = (smoothIndex - (samplesToDraw * 2) + size) % size;
+    const startIdx = Math.floor(startIdxExact / 2) * 2; // Keep sample-pair aligned
 
     ctx.save();
     ctx.beginPath();
     ctx.strokeStyle = '#ccccfa';
-    ctx.lineWidth = 1.5;
-    
-    for (let i = 0; i < pointsCount; i++) {
-        // Read Left channel (even indices in interleaved buffer)
-        const readIdx = (startIdx + (i * step * 2)) % size;
-        const v = buffer[readIdx];
-        
-        const y = midY - (v * (canvas.height / 2 - 10)); 
-        const x = i * sliceWidth;
+    ctx.lineWidth = 1.2;
 
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+    const samplesPerPixel = samplesToDraw / oscWidth;
+
+    if (samplesPerPixel > 1) {
+        // High-fidelity bucket-based rendering to prevent aliasing/flicker
+        for (let x = 0; x < oscWidth; x++) {
+            const rangeStart = x * samplesPerPixel;
+            const rangeEnd = (x + 1) * samplesPerPixel;
+            
+            let min = 1.0;
+            let max = -1.0;
+            
+            // Check EVERY sample in the bucket for perfect peak stability
+            const sStart = Math.floor(rangeStart);
+            const sEnd = Math.ceil(rangeEnd);
+            
+            for (let s = sStart; s < sEnd; s++) {
+                const rIdx = (startIdx + (s * 2)) % size;
+                const val = buffer[rIdx];
+                if (val < min) min = val;
+                if (val > max) max = val;
+            }
+
+            const yMin = midY - (max * (canvas.height / 2 - 10));
+            const yMax = midY - (min * (canvas.height / 2 - 10));
+            
+            if (x === 0) ctx.moveTo(x, yMin);
+            ctx.lineTo(x, yMin);
+            ctx.lineTo(x, yMax);
+        }
+    } else {
+        // Interpolated rendering for high zoom levels
+        for (let x = 0; x < oscWidth; x++) {
+            const samplePos = x * samplesPerPixel;
+            const idxBase = Math.floor(samplePos);
+            const fract = samplePos - idxBase;
+            
+            const rIdx1 = (startIdx + (idxBase * 2)) % size;
+            const rIdx2 = (startIdx + ((idxBase + 1) * 2)) % size;
+            
+            const v = buffer[rIdx1] * (1 - fract) + buffer[rIdx2] * fract;
+            const y = midY - (v * (canvas.height / 2 - 10));
+            
+            if (x === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
     }
     ctx.stroke();
     ctx.restore();
 
     // --- DRAW VECTORSCOPE (Right Half) ---
-    // A goniometer-style plot: X = L-R, Y = -(L+R)
-    const vectorSamples = 1024; // Recent history for trace look
-    const vectorScale = (canvas.height / 2) - padding;
-    const vectorStartIdx = (index - (vectorSamples * 2) + size) % size;
+    const vectorSamples = 1024;
+    const vectorScale = (canvas.height / 2) * 0.7;
+    const vectorStartIdx = (Math.floor(smoothIndex / 2) * 2 - (vectorSamples * 2) + size) % size;
 
     ctx.save();
     ctx.translate(midX + midX / 2, midY);
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(204, 204, 250, 1)';
+    ctx.strokeStyle = '#ff4a00';
     ctx.lineWidth = 1.5;
 
     for (let i = 0; i < vectorSamples; i++) {
@@ -238,7 +281,6 @@ function draw() {
         const L = buffer[rIdx];
         const R = buffer[rIdx + 1];
 
-        // Standard 45-degree rotation goniometer coordinates
         const vx = (L - R) * 0.707;
         const vy = -(L + R) * 0.707;
 
@@ -252,10 +294,12 @@ function draw() {
 
     // Draw reference lines for vectorscope
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.lineWidth = 1;
     ctx.setLineDash([8, 8]);
-    ctx.moveTo(-vectorScale, 0); ctx.lineTo(vectorScale, 0);
-    ctx.moveTo(0, -vectorScale); ctx.lineTo(0, vectorScale);
+    const refScale = vectorScale * 1.1; // Extend lines slightly beyond the trace area
+    ctx.moveTo(-refScale, 0); ctx.lineTo(refScale, 0);
+    ctx.moveTo(0, -refScale); ctx.lineTo(0, refScale);
     ctx.stroke();
     ctx.restore();
 

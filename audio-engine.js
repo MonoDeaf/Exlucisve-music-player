@@ -18,6 +18,7 @@ export class AudioEngine {
         this.historySize = 4194304; 
         this.historyBuffer = new Float32Array(this.historySize);
         this.historyIndex = 0;
+        this.lastUpdateTimestamp = 0;
         this.workletNode = null;
         
         this.currentUrl = '';
@@ -124,6 +125,7 @@ export class AudioEngine {
                     idx = (idx + 1) % size;
                 }
                 this.historyIndex = idx;
+                this.lastUpdateTimestamp = performance.now();
             };
 
             // Connect source to worklet (side-chain for visualization only)
